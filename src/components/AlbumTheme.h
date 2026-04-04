@@ -1,6 +1,20 @@
 #pragma once
 
 #include <GfxRenderer.h>
+#include <HalPowerManager.h>
+
+#include <cstdint>
+#include <functional>
+
+// ── Forward declarations ──
+struct Rect {
+  int x;
+  int y;
+  int width;
+  int height;
+};
+
+// ── Layout metrics ──────────────────────────────────────────────────────────
 
 struct AlbumMetrics {
   static constexpr int SCREEN_W_LANDSCAPE = 800;
@@ -62,6 +76,84 @@ struct AlbumMetrics {
   int batteryCapWidth = 2;
 };
 
+// ── Component data structures ───────────────────────────────────────────────
+
+struct StatusBarData {
+  const char* folderName;  // nullable
+  int currentIndex;        // 1-based, 0 = hide count
+  int totalCount;
+  int batteryPercent;      // 0-100
+  bool showClock;
+};
+
+struct ListItem {
+  const char* title;
+  const char* subtitle;    // nullable
+  const char* value;       // nullable, shown right-aligned
+  const uint8_t* icon;     // nullable, 24x24 bitmap
+  bool enabled;
+};
+
+struct ListViewConfig {
+  int selectedIndex;
+  int scrollOffset;        // first visible item index
+  bool showScrollBar;
+  bool showSeparators;
+};
+
+struct GridViewConfig {
+  int selectedIndex;       // global index of focused image
+  int pageOffset;          // global index of first image on current page
+  int totalCount;
+  int cols;
+  int rows;
+};
+
+enum class ThumbState : uint8_t { NotLoaded, Loading, Loaded, Failed };
+
+struct GridThumbInfo {
+  ThumbState state;
+  const uint8_t* bmpData;   // BMP pixel data for Loaded state, nullptr otherwise
+  int bmpWidth;
+  int bmpHeight;
+};
+
+using ThumbLoader = std::function<GridThumbInfo(int globalIndex)>;
+
+enum class DialogType : uint8_t { Confirm, Alert, Select };
+
+struct DialogConfig {
+  const char* title;
+  const char* message;        // for Confirm/Alert
+  const char* confirmLabel;   // default "确定"
+  const char* cancelLabel;    // nullptr = single button
+  // Select type
+  const char* const* options;
+  int optionCount;
+  int currentOption;          // current value (shows checkmark)
+};
+
+enum class ToastType : uint8_t { Success, Error, Info };
+
+struct OverlayData {
+  const char* filename;
+  int currentIndex;
+  int totalCount;
+  const char* buttonLabels[4];
+};
+
+struct EmptyStateConfig {
+  const uint8_t* icon;       // 32x32, nullable
+  int iconSize;
+  const char* title;
+  const char* subtitle;      // supports \n for line break
+  bool showStatusBar;
+  bool showButtonHints;
+  const char* buttonLabels[4];
+};
+
+// ── AlbumTheme ──────────────────────────────────────────────────────────────
+
 class AlbumTheme {
  public:
   static AlbumTheme& getInstance() {
@@ -69,16 +161,70 @@ class AlbumTheme {
     return instance;
   }
 
-  const AlbumMetrics& getMetrics() const { return metrics; }
+  const AlbumMetrics& getMetrics() const { return metrics_; }
 
-  int getContentHeight(bool landscape = true) const {
-    return (landscape ? AlbumMetrics::SCREEN_H_LANDSCAPE : AlbumMetrics::SCREEN_H_PORTRAIT)
-           - metrics.statusBarHeight - metrics.buttonHintsHeight;
+  int getContentHeight(const GfxRenderer& renderer) const {
+    return renderer.getScreenHeight() - metrics_.statusBarHeight - metrics_.buttonHintsHeight;
   }
+
+  int getContentTop() const { return metrics_.statusBarHeight; }
+
+  int getGridCols(const GfxRenderer& renderer) const {
+    return isLandscape(renderer) ? metrics_.gridCols_landscape : metrics_.gridCols_portrait;
+  }
+
+  int getGridRows(const GfxRenderer& renderer) const {
+    return isLandscape(renderer) ? metrics_.gridRows_landscape : metrics_.gridRows_portrait;
+  }
+
+  int getPageSize(const GfxRenderer& renderer) const {
+    return getGridCols(renderer) * getGridRows(renderer);
+  }
+
+  int getListVisibleRows(const GfxRenderer& renderer) const {
+    return getContentHeight(renderer) / metrics_.listRowHeight;
+  }
+
+  // ── Drawing methods ─────────────────────────────────────────────────────
+
+  void drawStatusBar(GfxRenderer& renderer, const StatusBarData& data) const;
+
+  void drawButtonHints(GfxRenderer& renderer, const char* label1, const char* label2,
+                       const char* label3, const char* label4) const;
+
+  void drawProgressBar(GfxRenderer& renderer, int x, int y, int width, int height,
+                       int progress) const;
+
+  void drawListView(GfxRenderer& renderer, const Rect& rect, const ListItem items[], int itemCount,
+                    const ListViewConfig& config) const;
+
+  void drawGridView(GfxRenderer& renderer, const GridViewConfig& config,
+                    ThumbLoader loader) const;
+
+  void drawDialog(GfxRenderer& renderer, const DialogConfig& config, int focusedIndex) const;
+
+  void drawToast(GfxRenderer& renderer, const char* message, ToastType type) const;
+
+  void drawInfoOverlay(GfxRenderer& renderer, const OverlayData& data) const;
+
+  void drawEmptyState(GfxRenderer& renderer, const EmptyStateConfig& config) const;
+
+  void drawBootScreen(GfxRenderer& renderer, const char* statusText, int progress,
+                      const char* version) const;
+
+  void drawShutdownScreen(GfxRenderer& renderer) const;
 
  private:
   AlbumTheme() = default;
-  AlbumMetrics metrics;
+  AlbumMetrics metrics_;
+
+  static bool isLandscape(const GfxRenderer& renderer) {
+    return renderer.getScreenWidth() > renderer.getScreenHeight();
+  }
+
+  void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int percent) const;
+  void drawScrollBar(const GfxRenderer& renderer, const Rect& rect, int totalItems,
+                     int visibleItems, int scrollOffset) const;
 };
 
 #define THEME AlbumTheme::getInstance()
