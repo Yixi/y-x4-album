@@ -5,51 +5,12 @@
 
 #include <cstring>
 
+static constexpr int MAX_RECURSION_DEPTH = 5;
+
 int ImageScanner::scanDirectory(const char* dirPath, ImageEntry* entries, int maxEntries) {
   if (!entries || maxEntries <= 0) return 0;
 
-  FsFile dir = Storage.open(dirPath);
-  if (!dir || !dir.isDirectory()) {
-    LOG_ERR("SCANNER", "Cannot open directory: %s", dirPath);
-    return 0;
-  }
-
-  int count = 0;
-  char name[128];
-
-  for (FsFile file = dir.openNextFile(); file && count < maxEntries;
-       file = dir.openNextFile()) {
-    if (file.isDirectory()) {
-      file.close();
-      continue;
-    }
-
-    file.getName(name, sizeof(name));
-
-    ImageFormat fmt = detectFormat(name);
-    if (fmt == ImageFormat::Unknown) {
-      file.close();
-      continue;
-    }
-
-    // Skip hidden files (starting with '.')
-    if (name[0] == '.') {
-      file.close();
-      continue;
-    }
-
-    // Store filename only (ImageIndex prepends dirPath when full path is needed)
-    strncpy(entries[count].filename, name, sizeof(entries[count].filename) - 1);
-    entries[count].filename[sizeof(entries[count].filename) - 1] = '\0';
-    entries[count].fileSize = static_cast<uint32_t>(file.fileSize());
-    entries[count].modTime = 0;  // HalFile doesn't expose modification time
-    entries[count].format = fmt;
-    count++;
-
-    file.close();
-  }
-
-  dir.close();
+  int count = scanRecursive(dirPath, "", entries, maxEntries, 0, 0);
 
   // Sort by filename (case-insensitive, insertion sort — no heap, O(n²) fine for ≤200 files)
   for (int i = 1; i < count; i++) {
@@ -63,7 +24,77 @@ int ImageScanner::scanDirectory(const char* dirPath, ImageEntry* entries, int ma
     memcpy(&entries[j + 1], &tmp, sizeof(ImageEntry));
   }
 
-  LOG_INF("SCANNER", "Found %d images in %s", count, dirPath);
+  LOG_INF("SCANNER", "Found %d images in %s (recursive)", count, dirPath);
+  return count;
+}
+
+int ImageScanner::scanRecursive(const char* basePath, const char* relPath,
+                                ImageEntry* entries, int maxEntries, int count, int depth) {
+  if (depth > MAX_RECURSION_DEPTH || count >= maxEntries) return count;
+
+  // Build full path for this directory
+  char fullDir[256];
+  if (relPath[0] != '\0') {
+    snprintf(fullDir, sizeof(fullDir), "%s/%s", basePath, relPath);
+  } else {
+    strncpy(fullDir, basePath, sizeof(fullDir) - 1);
+    fullDir[sizeof(fullDir) - 1] = '\0';
+  }
+
+  FsFile dir = Storage.open(fullDir);
+  if (!dir || !dir.isDirectory()) {
+    LOG_ERR("SCANNER", "Cannot open directory: %s", fullDir);
+    return count;
+  }
+
+  char name[128];
+
+  for (FsFile file = dir.openNextFile(); file && count < maxEntries;
+       file = dir.openNextFile()) {
+    file.getName(name, sizeof(name));
+
+    // Skip hidden files/dirs (starting with '.')
+    if (name[0] == '.') {
+      file.close();
+      continue;
+    }
+
+    if (file.isDirectory()) {
+      // Recurse into subdirectory
+      char childRel[256];
+      if (relPath[0] != '\0') {
+        snprintf(childRel, sizeof(childRel), "%s/%s", relPath, name);
+      } else {
+        strncpy(childRel, name, sizeof(childRel) - 1);
+        childRel[sizeof(childRel) - 1] = '\0';
+      }
+      file.close();
+      count = scanRecursive(basePath, childRel, entries, maxEntries, count, depth + 1);
+      continue;
+    }
+
+    ImageFormat fmt = detectFormat(name);
+    if (fmt == ImageFormat::Unknown) {
+      file.close();
+      continue;
+    }
+
+    // Store relative path from basePath (e.g., "subfolder/photo.jpg")
+    if (relPath[0] != '\0') {
+      snprintf(entries[count].filename, sizeof(entries[count].filename), "%s/%s", relPath, name);
+    } else {
+      strncpy(entries[count].filename, name, sizeof(entries[count].filename) - 1);
+      entries[count].filename[sizeof(entries[count].filename) - 1] = '\0';
+    }
+    entries[count].fileSize = static_cast<uint32_t>(file.fileSize());
+    entries[count].modTime = 0;
+    entries[count].format = fmt;
+    count++;
+
+    file.close();
+  }
+
+  dir.close();
   return count;
 }
 

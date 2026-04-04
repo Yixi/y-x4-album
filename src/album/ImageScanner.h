@@ -13,7 +13,13 @@ struct ImageEntry {
 
 class ImageScanner {
  public:
+  // Recursively scan directory and subdirectories for image files.
+  // Stores relative paths from dirPath (e.g., "subfolder/photo.jpg").
   static int scanDirectory(const char* dirPath, ImageEntry* entries, int maxEntries);
   static ImageFormat detectFormat(const char* filename);
   static bool isSupportedImage(const char* filename);
+
+ private:
+  static int scanRecursive(const char* basePath, const char* relPath,
+                           ImageEntry* entries, int maxEntries, int count, int depth);
 };
