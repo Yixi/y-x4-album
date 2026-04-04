@@ -113,7 +113,7 @@ enum class ThumbState : uint8_t { NotLoaded, Loading, Loaded, Failed };
 
 struct GridThumbInfo {
   ThumbState state;
-  const uint8_t* bmpData;   // BMP pixel data for Loaded state, nullptr otherwise
+  char cachePath[256];  // BMP cache file path for Loaded state
   int bmpWidth;
   int bmpHeight;
 };

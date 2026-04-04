@@ -1,6 +1,8 @@
 #include "AlbumTheme.h"
 
+#include <Bitmap.h>
 #include <HalGPIO.h>
+#include <HalStorage.h>
 #include <Logging.h>
 
 #include <algorithm>
@@ -331,12 +333,19 @@ void AlbumTheme::drawGridView(GfxRenderer& renderer, const GridViewConfig& confi
         renderer.fillRectDither(innerX, innerY, innerW, innerH, Color::LightGray);
         break;
 
-      case ThumbState::Loaded:
-        if (info.bmpData) {
-          // Draw 1-bit BMP data directly
-          renderer.drawImage(info.bmpData, innerX, innerY, info.bmpWidth, info.bmpHeight);
+      case ThumbState::Loaded: {
+        if (info.cachePath[0] != '\0') {
+          FsFile thumbFile;
+          if (Storage.openFileForRead("THUMB_R", info.cachePath, thumbFile)) {
+            Bitmap bmp(thumbFile, true);
+            if (bmp.parseHeaders() == BmpReaderError::Ok) {
+              renderer.drawBitmap(bmp, innerX, innerY, innerW, innerH);
+            }
+            thumbFile.close();
+          }
         }
         break;
+      }
 
       case ThumbState::Failed: {
         // Draw X mark in center

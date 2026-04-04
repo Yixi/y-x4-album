@@ -20,10 +20,10 @@ void ViewerActivity::onEnter() {
   needsDecode_ = true;
   partialRefreshCount_ = 0;
 
-  // Show overlay on first enter, auto-hide after 3s
-  overlayVisible_ = true;
-  overlayAutoHide_ = true;
-  overlayShowTime_ = millis();
+  // Don't show overlay on first enter to avoid extra refreshes.
+  // User can press Confirm to show it.
+  overlayVisible_ = false;
+  overlayAutoHide_ = false;
 
   requestUpdate();
 }
@@ -186,9 +186,9 @@ void ViewerActivity::navigateTo(int newIndex) {
   currentIndex_ = newIndex;
   needsDecode_ = true;
 
-  overlayVisible_ = true;
-  overlayAutoHide_ = true;
-  overlayShowTime_ = millis();
+  // Don't show overlay during navigation to avoid extra refreshes
+  overlayVisible_ = false;
+  overlayAutoHide_ = false;
 
   requestUpdate();
 }
@@ -218,6 +218,8 @@ void ViewerActivity::hideOverlay() {
   overlayVisible_ = false;
   overlayAutoHide_ = false;
 
+  // Re-decode to remove overlay from screen
+  // TODO: optimize by caching the rendered image instead of re-decoding
   needsDecode_ = true;
   requestUpdate();
 }

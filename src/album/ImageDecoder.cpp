@@ -223,27 +223,33 @@ bool ImageDecoder::renderBmpGrayscale(const char* bmpPath, GfxRenderer& renderer
 
   bool hasGreyscale = bitmap.hasGreyscale();
 
-  // Pass 1: BW rendering (base layer)
-  renderer.clearScreen();
-  renderer.drawBitmap(bitmap, x, y, screenW, screenH, 0, 0);
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  if (!hasGreyscale) {
+    // 1-bit BMP: single BW pass with full refresh
+    renderer.clearScreen();
+    renderer.drawBitmap(bitmap, x, y, screenW, screenH, 0, 0);
+    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  } else {
+    // Grayscale BMP: BW base + LSB/MSB overlay (matches crosspoint SleepActivity)
+    // Pass 1: BW base layer — display with HALF_REFRESH to clear ghosting
+    renderer.clearScreen();
+    renderer.drawBitmap(bitmap, x, y, screenW, screenH, 0, 0);
+    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 
-  if (hasGreyscale) {
-    // Pass 2: Grayscale LSB plane
+    // Pass 2: Grayscale LSB plane (no screen refresh yet)
     bitmap.rewindToData();
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     renderer.drawBitmap(bitmap, x, y, screenW, screenH, 0, 0);
     renderer.copyGrayscaleLsbBuffers();
 
-    // Pass 3: Grayscale MSB plane
+    // Pass 3: Grayscale MSB plane (no screen refresh yet)
     bitmap.rewindToData();
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
     renderer.drawBitmap(bitmap, x, y, screenW, screenH, 0, 0);
     renderer.copyGrayscaleMsbBuffers();
 
-    // Display grayscale overlay
+    // Single grayscale refresh — this is the only visible update
     renderer.displayGrayBuffer();
     renderer.setRenderMode(GfxRenderer::BW);
   }

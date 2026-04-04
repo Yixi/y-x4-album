@@ -122,7 +122,9 @@ void GalleryActivity::render(RenderLock&& lock) {
   // Button hints
   THEME.drawButtonHints(renderer, tr(STR_BROWSE), tr(STR_OPEN), nullptr, nullptr);
 
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  // Use FAST_REFRESH for navigation, FULL_REFRESH only on first load or page change
+  renderer.displayBuffer(firstRender_ ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  firstRender_ = false;
 }
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -234,13 +236,9 @@ GridThumbInfo GalleryActivity::loadThumb(int globalIndex) {
     }
   }
 
-  // Read the BMP data from cache
-  // Note: drawGridView handles rendering from BMP data
-  // For now we report Loaded with null data — drawGridView will show placeholder
-  // Full BMP loading requires reading into a buffer which we defer to
-  // the grid renderer's built-in BMP file rendering
   info.state = ThumbState::Loaded;
-  info.bmpData = nullptr;
+  ThumbnailCache::getCachePath(fullPath, entry.fileSize, entry.modTime,
+                               info.cachePath, sizeof(info.cachePath));
   info.bmpWidth = ThumbnailCache::THUMB_WIDTH;
   info.bmpHeight = ThumbnailCache::THUMB_HEIGHT;
 

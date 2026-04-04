@@ -29,6 +29,7 @@ class GalleryActivity final : public Activity {
   int focusIndex_ = 0;
   int pageOffset_ = 0;
   bool needsRedraw_ = true;
+  bool firstRender_ = true;
   ButtonNavigator nav_{200, 400};
 
   int getPageSize() const;
