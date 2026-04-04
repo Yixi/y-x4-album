@@ -1,5 +1,6 @@
 #include "ViewerActivity.h"
 
+#include <I18n.h>
 #include <Logging.h>
 
 #include "ActivityManager.h"
@@ -64,7 +65,6 @@ void ViewerActivity::loop() {
       return;
     }
     if (mappedInput.wasPressed(Button::Left)) {
-      // Rotate display — not implemented yet, just hide overlay
       hideOverlay();
       return;
     }
@@ -76,7 +76,6 @@ void ViewerActivity::loop() {
       hideOverlay();
       return;
     }
-    // Side buttons still navigate in overlay mode
     if (mappedInput.wasPressed(Button::Up)) {
       navigateRelative(-1);
       return;
@@ -98,7 +97,6 @@ void ViewerActivity::loop() {
     return;
   }
 
-  // Navigation: Up/Left = previous, Down/Right = next
   if (mappedInput.wasPressed(Button::Up) || mappedInput.wasPressed(Button::Left)) {
     navigateRelative(-1);
     return;
@@ -116,7 +114,6 @@ void ViewerActivity::render(RenderLock&&) {
     int screenW = renderer.getScreenWidth();
     int screenH = renderer.getScreenHeight();
 
-    // Build full path
     char path[384];
     imageIndex_.getFullPath(currentIndex_, path, sizeof(path));
 
@@ -125,35 +122,30 @@ void ViewerActivity::render(RenderLock&&) {
 
     bool bgWhite = SETTINGS.data.bgWhite;
 
-    // Use grayscale rendering for best quality
     if (SETTINGS.data.renderMode == 0) {
-      // Grayscale (4-level)
       if (!ImageDecoder::decodeGrayscale(path, renderer, screenW, screenH,
                                          scaleMode_, bgWhite)) {
         LOG_ERR("VIEWER", "Grayscale decode failed, falling back to BW");
         if (!ImageDecoder::decodeBW(path, renderer, screenW, screenH,
                                     scaleMode_, bgWhite)) {
-          // Show error on screen
           renderer.clearScreen(0xFF);
           renderer.drawCenteredText(UI_12_FONT_ID, screenH / 2 - 10,
-                                    "Failed to decode image");
+                                    tr(STR_DECODE_FAILED));
           renderer.displayBuffer(HalDisplay::FULL_REFRESH);
         }
       }
     } else {
-      // BW (1-bit)
       if (!ImageDecoder::decodeBW(path, renderer, screenW, screenH,
                                   scaleMode_, bgWhite)) {
         renderer.clearScreen(0xFF);
         renderer.drawCenteredText(UI_12_FONT_ID, screenH / 2 - 10,
-                                  "Failed to decode image");
+                                  tr(STR_DECODE_FAILED));
         renderer.displayBuffer(HalDisplay::FULL_REFRESH);
       }
     }
 
     partialRefreshCount_ = 0;
 
-    // Draw overlay on top if visible (first entry)
     if (overlayVisible_) {
       needsOverlayRedraw_ = true;
     }
@@ -162,12 +154,10 @@ void ViewerActivity::render(RenderLock&&) {
   if (needsOverlayRedraw_) {
     needsOverlayRedraw_ = false;
 
-    char path[384];
-    imageIndex_.getFullPath(currentIndex_, path, sizeof(path));
     const char* filename = imageIndex_.at(currentIndex_).filename;
 
-    // Determine button labels based on overlay state
-    auto labels = mappedInput.mapLabels("返回", "信息", "旋转", "幻灯片");
+    auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_INFO),
+                                        tr(STR_ROTATE), tr(STR_START_SLIDESHOW));
 
     OverlayData overlay;
     overlay.filename = filename;
@@ -180,7 +170,6 @@ void ViewerActivity::render(RenderLock&&) {
 
     THEME.drawInfoOverlay(renderer, overlay);
 
-    // Overlay is drawn on top of image, use fast refresh
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     partialRefreshCount_++;
   }
@@ -197,7 +186,6 @@ void ViewerActivity::navigateTo(int newIndex) {
   currentIndex_ = newIndex;
   needsDecode_ = true;
 
-  // Re-show overlay with auto-hide when navigating
   overlayVisible_ = true;
   overlayAutoHide_ = true;
   overlayShowTime_ = millis();
@@ -208,7 +196,6 @@ void ViewerActivity::navigateTo(int newIndex) {
 void ViewerActivity::navigateRelative(int delta) {
   int newIndex = currentIndex_ + delta;
 
-  // Wrap around if loop browsing enabled
   if (SETTINGS.data.loopBrowsing) {
     if (newIndex < 0) newIndex = imageIndex_.count() - 1;
     if (newIndex >= imageIndex_.count()) newIndex = 0;
@@ -231,8 +218,6 @@ void ViewerActivity::hideOverlay() {
   overlayVisible_ = false;
   overlayAutoHide_ = false;
 
-  // Need to re-decode to remove overlay from screen
-  // Only do full refresh periodically
   needsDecode_ = true;
   requestUpdate();
 }
@@ -251,7 +236,6 @@ void ViewerActivity::openImageInfo() {
       renderer, mappedInput, path);
 
   startActivityForResult(std::move(infoActivity), [this](bool /*cancelled*/) {
-    // Re-render current image when returning from info
     needsDecode_ = true;
     requestUpdate();
   });
@@ -262,7 +246,6 @@ void ViewerActivity::startSlideshow() {
       renderer, mappedInput, imageIndex_, currentIndex_);
 
   startActivityForResult(std::move(slideshow), [this](bool /*cancelled*/) {
-    // Re-render current image when returning from slideshow
     needsDecode_ = true;
     requestUpdate();
   });

@@ -1,6 +1,7 @@
 #include "FileBrowserActivity.h"
 
 #include <HalPowerManager.h>
+#include <I18n.h>
 #include <Logging.h>
 
 #include <cstdlib>
@@ -73,11 +74,11 @@ void FileBrowserActivity::render(RenderLock&& lock) {
 
   if (entryCount_ == 0) {
     EmptyStateConfig cfg = {};
-    cfg.title = "Empty Folder";
-    cfg.subtitle = "No files or subfolders found";
+    cfg.title = tr(STR_EMPTY_FOLDER);
+    cfg.subtitle = tr(STR_NO_FILES_FOUND);
     cfg.showStatusBar = false;
     cfg.showButtonHints = true;
-    cfg.buttonLabels[0] = "Back";
+    cfg.buttonLabels[0] = tr(STR_BACK);
     THEME.drawEmptyState(renderer, cfg);
   } else {
     // Build ListItem array for visible items
@@ -113,7 +114,7 @@ void FileBrowserActivity::render(RenderLock&& lock) {
   }
 
   // Button hints
-  THEME.drawButtonHints(renderer, "Back", "Open", nullptr, nullptr);
+  THEME.drawButtonHints(renderer, tr(STR_BACK), tr(STR_OPEN), nullptr, nullptr);
 
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 }

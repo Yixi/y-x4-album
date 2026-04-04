@@ -1,6 +1,7 @@
 #include "GalleryActivity.h"
 
 #include <HalPowerManager.h>
+#include <I18n.h>
 #include <Logging.h>
 
 #include "ActivityManager.h"
@@ -15,7 +16,7 @@ void GalleryActivity::onEnter() {
 
   ThumbnailCache::init();
 
-  if (!imageIndex_.build(initialDir_, 500)) {
+  if (!imageIndex_.build(initialDir_, 200)) {
     LOG_ERR("GALLERY", "Failed to build image index");
   }
 
@@ -85,11 +86,11 @@ void GalleryActivity::render(RenderLock&& lock) {
   if (imageIndex_.count() == 0) {
     // Empty state
     EmptyStateConfig cfg = {};
-    cfg.title = "No Images Found";
-    cfg.subtitle = "Place JPG, PNG or BMP files\non your SD card";
+    cfg.title = tr(STR_NO_IMAGES);
+    cfg.subtitle = tr(STR_NO_IMAGES_SUBTITLE);
     cfg.showStatusBar = true;
     cfg.showButtonHints = true;
-    cfg.buttonLabels[0] = "Browse";
+    cfg.buttonLabels[0] = tr(STR_BROWSE);
     cfg.buttonLabels[1] = nullptr;
     cfg.buttonLabels[2] = nullptr;
     cfg.buttonLabels[3] = nullptr;
@@ -119,7 +120,7 @@ void GalleryActivity::render(RenderLock&& lock) {
   });
 
   // Button hints
-  THEME.drawButtonHints(renderer, "Browse", "Open", nullptr, nullptr);
+  THEME.drawButtonHints(renderer, tr(STR_BROWSE), tr(STR_OPEN), nullptr, nullptr);
 
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 }

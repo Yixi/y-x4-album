@@ -1,5 +1,6 @@
 #include "ImageInfoActivity.h"
 
+#include <I18n.h>
 #include <Logging.h>
 
 #include "fontIds.h"
@@ -14,7 +15,11 @@ void ImageInfoActivity::onEnter() {
 void ImageInfoActivity::onExit() { Activity::onExit(); }
 
 void ImageInfoActivity::loop() {
-  // TODO: handle Back button
+  using Button = MappedInputManager::Button;
+  if (mappedInput.wasPressed(Button::Back)) {
+    finish();
+    return;
+  }
 }
 
 void ImageInfoActivity::render(RenderLock&& lock) {
@@ -22,6 +27,6 @@ void ImageInfoActivity::render(RenderLock&& lock) {
   needsRedraw = false;
 
   renderer.clearScreen(0xFF);
-  renderer.drawCenteredText(UI_12_FONT_ID, 220, "Image Info");
+  renderer.drawCenteredText(UI_12_FONT_ID, 220, tr(STR_IMAGE_INFO));
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 }

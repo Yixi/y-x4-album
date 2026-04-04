@@ -1,6 +1,7 @@
 #include "SettingsActivity.h"
 
 #include <HalStorage.h>
+#include <I18n.h>
 #include <Logging.h>
 
 #include "fontIds.h"
@@ -165,8 +166,8 @@ void SettingsActivity::render(RenderLock&&) {
   sb.showClock = true;
   THEME.drawStatusBar(renderer, sb);
 
-  // Title in status bar area (draw over the folder name area)
-  renderer.drawText(UI_10_FONT_ID, 7, 5, "设置");
+  // Title in status bar area
+  renderer.drawText(UI_10_FONT_ID, 7, 5, tr(STR_SETTINGS));
 
   // Build list items
   char valueBuffers[ITEM_COUNT][24];
@@ -189,13 +190,12 @@ void SettingsActivity::render(RenderLock&&) {
   THEME.drawListView(renderer, listRect, items, ITEM_COUNT, listCfg);
 
   // Button hints
-  auto labels = mappedInput.mapLabels("返回", "选择", nullptr, nullptr);
+  auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), nullptr, nullptr);
   THEME.drawButtonHints(renderer, labels.btn1, labels.btn2, nullptr, nullptr);
 
   // Draw dialog overlay if active
   if (dialogActive_) {
     int optCount = getOptionCount(dialogItem_);
-    // Build option labels array (max 8 options)
     const char* optLabels[8];
     for (int i = 0; i < optCount && i < 8; i++) {
       optLabels[i] = getOptionLabel(dialogItem_, i);
@@ -204,8 +204,8 @@ void SettingsActivity::render(RenderLock&&) {
     DialogConfig dlgCfg{};
     dlgCfg.title = items[static_cast<int>(dialogItem_)].title;
     dlgCfg.message = nullptr;
-    dlgCfg.confirmLabel = "确定";
-    dlgCfg.cancelLabel = "取消";
+    dlgCfg.confirmLabel = tr(STR_CONFIRM);
+    dlgCfg.cancelLabel = tr(STR_CANCEL);
     dlgCfg.options = optLabels;
     dlgCfg.optionCount = optCount;
     dlgCfg.currentOption = getCurrentOption(dialogItem_);
@@ -215,13 +215,13 @@ void SettingsActivity::render(RenderLock&&) {
 
   if (confirmActive_) {
     const char* msg = (confirmItem_ == ItemId::ClearCache)
-                          ? "确定要清除所有缩略图缓存？"
-                          : "确定要恢复所有默认设置？";
+                          ? tr(STR_CLEAR_CACHE_CONFIRM)
+                          : tr(STR_RESET_CONFIRM);
     DialogConfig dlgCfg{};
-    dlgCfg.title = (confirmItem_ == ItemId::ClearCache) ? "清除缓存" : "恢复默认";
+    dlgCfg.title = (confirmItem_ == ItemId::ClearCache) ? tr(STR_CLEAR_CACHE) : tr(STR_RESET_DEFAULTS);
     dlgCfg.message = msg;
-    dlgCfg.confirmLabel = "确定";
-    dlgCfg.cancelLabel = "取消";
+    dlgCfg.confirmLabel = tr(STR_CONFIRM);
+    dlgCfg.cancelLabel = tr(STR_CANCEL);
     dlgCfg.options = nullptr;
     dlgCfg.optionCount = 0;
     dlgCfg.currentOption = -1;
@@ -234,15 +234,25 @@ void SettingsActivity::render(RenderLock&&) {
 
 // ── List item building ─────────────────────────────────────────────────────
 
-static const char* ITEM_TITLES[] = {
-    "幻灯片间隔", "播放顺序", "图片缩放", "屏幕方向",
-    "渲染模式",   "自动关机", "循环浏览", "侧键方向",
-    "清除缩略图缓存", "恢复默认设置", "关于",
+// Map ItemId to StrId for titles
+static StrId ITEM_TITLE_KEYS[] = {
+    StrId::STR_SLIDESHOW_INTERVAL,
+    StrId::STR_SLIDESHOW_ORDER,
+    StrId::STR_SCALE_MODE,
+    StrId::STR_ORIENTATION,
+    StrId::STR_RENDER_MODE,
+    StrId::STR_AUTO_SLEEP,
+    StrId::STR_LOOP_BROWSING,
+    StrId::STR_SIDE_BUTTONS,
+    StrId::STR_LANGUAGE,
+    StrId::STR_CLEAR_CACHE,
+    StrId::STR_RESET_DEFAULTS,
+    StrId::STR_ABOUT,
 };
 
 void SettingsActivity::buildListItems(ListItem* items, char valueBuffers[][24]) const {
   for (int i = 0; i < ITEM_COUNT; i++) {
-    items[i].title = ITEM_TITLES[i];
+    items[i].title = I18N.get(ITEM_TITLE_KEYS[i]);
     items[i].subtitle = nullptr;
     items[i].icon = nullptr;
     items[i].enabled = true;
@@ -261,19 +271,28 @@ void SettingsActivity::buildListItems(ListItem* items, char valueBuffers[][24]) 
   }
 }
 
-// ── Option configuration ───────────────────────────────────────────────────
+// ── Option configuration (all using tr() for i18n) ─────────────────────────
 
-// Slideshow interval options (seconds)
 static const uint16_t INTERVAL_VALUES[] = {5, 10, 30, 60, 300};
-static const char* INTERVAL_LABELS[] = {"5 秒", "10 秒", "30 秒", "1 分钟", "5 分钟"};
-
-static const char* ORDER_LABELS[] = {"顺序", "随机"};
-static const char* SCALE_LABELS[] = {"适应", "填充"};
-static const char* ORIENT_LABELS[] = {"横屏", "竖屏", "横屏倒置", "竖屏倒置"};
-static const char* RENDER_LABELS[] = {"灰度", "黑白"};
-static const char* SLEEP_LABELS[] = {"关闭", "5 分钟", "10 分钟", "30 分钟", "1 小时"};
 static const uint16_t SLEEP_VALUES[] = {0, 5, 10, 30, 60};
-static const char* TOGGLE_LABELS[] = {"关闭", "开启"};
+
+// StrId arrays for option labels
+static const StrId INTERVAL_KEYS[] = {
+    StrId::STR_5_SEC, StrId::STR_10_SEC, StrId::STR_30_SEC,
+    StrId::STR_1_MIN, StrId::STR_5_MIN,
+};
+static const StrId ORDER_KEYS[] = {StrId::STR_ORDER_SEQUENTIAL, StrId::STR_ORDER_RANDOM};
+static const StrId SCALE_KEYS[] = {StrId::STR_SCALE_FIT, StrId::STR_SCALE_FILL};
+static const StrId ORIENT_KEYS[] = {
+    StrId::STR_ORIENTATION_LANDSCAPE, StrId::STR_ORIENTATION_PORTRAIT,
+    StrId::STR_ORIENTATION_LANDSCAPE_INV, StrId::STR_ORIENTATION_PORTRAIT_INV,
+};
+static const StrId RENDER_KEYS[] = {StrId::STR_RENDER_GRAYSCALE, StrId::STR_RENDER_BW};
+static const StrId SLEEP_KEYS[] = {
+    StrId::STR_NEVER, StrId::STR_5_MIN, StrId::STR_10_MIN,
+    StrId::STR_30_MIN, StrId::STR_1_HOUR,
+};
+static const StrId TOGGLE_KEYS[] = {StrId::STR_OFF, StrId::STR_ON};
 
 int SettingsActivity::getOptionCount(ItemId id) const {
   switch (id) {
@@ -285,20 +304,22 @@ int SettingsActivity::getOptionCount(ItemId id) const {
     case ItemId::AutoSleep:         return 5;
     case ItemId::LoopBrowsing:      return 2;
     case ItemId::SideButtonReversed: return 2;
+    case ItemId::Language:          return static_cast<int>(Language::_COUNT);
     default: return 0;
   }
 }
 
 const char* SettingsActivity::getOptionLabel(ItemId id, int option) const {
   switch (id) {
-    case ItemId::SlideshowInterval: return INTERVAL_LABELS[option];
-    case ItemId::SlideshowOrder:    return ORDER_LABELS[option];
-    case ItemId::ScaleMode:         return SCALE_LABELS[option];
-    case ItemId::Orientation:       return ORIENT_LABELS[option];
-    case ItemId::RenderMode:        return RENDER_LABELS[option];
-    case ItemId::AutoSleep:         return SLEEP_LABELS[option];
-    case ItemId::LoopBrowsing:      return TOGGLE_LABELS[option];
-    case ItemId::SideButtonReversed: return TOGGLE_LABELS[option];
+    case ItemId::SlideshowInterval: return I18N.get(INTERVAL_KEYS[option]);
+    case ItemId::SlideshowOrder:    return I18N.get(ORDER_KEYS[option]);
+    case ItemId::ScaleMode:         return I18N.get(SCALE_KEYS[option]);
+    case ItemId::Orientation:       return I18N.get(ORIENT_KEYS[option]);
+    case ItemId::RenderMode:        return I18N.get(RENDER_KEYS[option]);
+    case ItemId::AutoSleep:         return I18N.get(SLEEP_KEYS[option]);
+    case ItemId::LoopBrowsing:      return I18N.get(TOGGLE_KEYS[option]);
+    case ItemId::SideButtonReversed: return I18N.get(TOGGLE_KEYS[option]);
+    case ItemId::Language:          return I18N.getLanguageName(static_cast<Language>(option));
     default: return "";
   }
 }
@@ -322,6 +343,7 @@ int SettingsActivity::getCurrentOption(ItemId id) const {
       return 3;  // default 30min
     case ItemId::LoopBrowsing:      return d.loopBrowsing;
     case ItemId::SideButtonReversed: return d.sideButtonReversed;
+    case ItemId::Language:          return static_cast<int>(I18N.getLanguage());
     default: return 0;
   }
 }
@@ -363,7 +385,6 @@ void SettingsActivity::applySelectChoice(ItemId id, int choice) {
       break;
     case ItemId::Orientation:
       d.orientation = static_cast<uint8_t>(choice);
-      // TODO: apply orientation change to renderer
       break;
     case ItemId::RenderMode:
       d.renderMode = static_cast<uint8_t>(choice);
@@ -377,10 +398,14 @@ void SettingsActivity::applySelectChoice(ItemId id, int choice) {
     case ItemId::SideButtonReversed:
       d.sideButtonReversed = static_cast<uint8_t>(choice);
       break;
+    case ItemId::Language:
+      I18N.setLanguage(static_cast<Language>(choice));
+      d.language = static_cast<uint8_t>(choice);
+      break;
     default:
       break;
   }
-  LOG_INF("SETTINGS", "Changed %s to option %d", ITEM_TITLES[static_cast<int>(id)], choice);
+  LOG_INF("SETTINGS", "Changed setting %d to option %d", static_cast<int>(id), choice);
 }
 
 void SettingsActivity::executeAction(ItemId id) {
@@ -388,12 +413,12 @@ void SettingsActivity::executeAction(ItemId id) {
     LOG_INF("SETTINGS", "Clearing thumbnail cache");
     Storage.removeDir("/.y-x4-album/thumbs");
     Storage.ensureDirectoryExists("/.y-x4-album/thumbs");
-    THEME.drawToast(renderer, "缓存已清除", ToastType::Success);
+    THEME.drawToast(renderer, tr(STR_CACHE_CLEARED), ToastType::Success);
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   } else if (id == ItemId::ResetDefaults) {
     LOG_INF("SETTINGS", "Resetting to defaults");
     SETTINGS.resetToDefaults();
-    THEME.drawToast(renderer, "已恢复默认设置", ToastType::Success);
+    THEME.drawToast(renderer, tr(STR_DEFAULTS_RESTORED), ToastType::Success);
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   }
 }

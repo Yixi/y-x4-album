@@ -24,6 +24,7 @@ class SettingsActivity final : public Activity {
     AutoSleep,
     LoopBrowsing,
     SideButtonReversed,
+    Language,
     ClearCache,
     ResetDefaults,
     About,
