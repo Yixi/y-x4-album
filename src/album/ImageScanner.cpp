@@ -1,12 +1,74 @@
 #include "ImageScanner.h"
 
+#include <HalStorage.h>
 #include <Logging.h>
+
 #include <cstring>
 
 int ImageScanner::scanDirectory(const char* dirPath, ImageEntry* entries, int maxEntries) {
-  // TODO: implement directory scanning with HalStorage
-  LOG_DBG("SCANNER", "Scanning directory: %s (max %d)", dirPath, maxEntries);
-  return 0;
+  if (!entries || maxEntries <= 0) return 0;
+
+  FsFile dir = Storage.open(dirPath);
+  if (!dir || !dir.isDirectory()) {
+    LOG_ERR("SCANNER", "Cannot open directory: %s", dirPath);
+    return 0;
+  }
+
+  // Determine if dirPath ends with '/'
+  size_t dirLen = strlen(dirPath);
+  bool hasSlash = (dirLen > 0 && dirPath[dirLen - 1] == '/');
+
+  int count = 0;
+  char name[128];
+
+  for (FsFile file = dir.openNextFile(); file && count < maxEntries;
+       file = dir.openNextFile()) {
+    if (file.isDirectory()) {
+      file.close();
+      continue;
+    }
+
+    file.getName(name, sizeof(name));
+
+    ImageFormat fmt = detectFormat(name);
+    if (fmt == ImageFormat::Unknown) {
+      file.close();
+      continue;
+    }
+
+    // Skip hidden files (starting with '.')
+    if (name[0] == '.') {
+      file.close();
+      continue;
+    }
+
+    // Build full path: dirPath + "/" + name
+    snprintf(entries[count].filename, sizeof(entries[count].filename),
+             hasSlash ? "%s%s" : "%s/%s", dirPath, name);
+    entries[count].fileSize = static_cast<uint32_t>(file.fileSize());
+    entries[count].modTime = 0;  // HalFile doesn't expose modification time
+    entries[count].format = fmt;
+    count++;
+
+    file.close();
+  }
+
+  dir.close();
+
+  // Sort by filename (case-insensitive, insertion sort — no heap, O(n²) fine for ≤200 files)
+  for (int i = 1; i < count; i++) {
+    ImageEntry tmp;
+    memcpy(&tmp, &entries[i], sizeof(ImageEntry));
+    int j = i - 1;
+    while (j >= 0 && strcasecmp(entries[j].filename, tmp.filename) > 0) {
+      memcpy(&entries[j + 1], &entries[j], sizeof(ImageEntry));
+      j--;
+    }
+    memcpy(&entries[j + 1], &tmp, sizeof(ImageEntry));
+  }
+
+  LOG_INF("SCANNER", "Found %d images in %s", count, dirPath);
+  return count;
 }
 
 ImageFormat ImageScanner::detectFormat(const char* filename) {
