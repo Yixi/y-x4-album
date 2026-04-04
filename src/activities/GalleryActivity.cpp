@@ -127,7 +127,10 @@ void GalleryActivity::render(RenderLock&& lock) {
 
 // ── Navigation ──────────────────────────────────────────────────────────────
 
-int GalleryActivity::getPageSize() const { return getCols() * getRows(); }
+int GalleryActivity::getPageSize() const {
+  int ps = getCols() * getRows();
+  return ps > 0 ? ps : 1;  // Prevent division by zero
+}
 
 int GalleryActivity::getCols() const { return THEME.getGridCols(renderer); }
 

@@ -23,24 +23,34 @@ bool AlbumState::loadFromFile() {
     return true;
   }
 
-  AlbumStateData tmp;
-  int bytesRead = file.read(&tmp, sizeof(tmp));
+  auto* tmp = new AlbumStateData();
+  if (!tmp) {
+    LOG_ERR("STATE", "Alloc failed");
+    file.close();
+    clear();
+    return false;
+  }
+
+  int bytesRead = file.read(tmp, sizeof(*tmp));
   file.close();
 
-  if (bytesRead != sizeof(tmp)) {
-    LOG_ERR("STATE", "Short read (%d/%zu bytes), using defaults", bytesRead, sizeof(tmp));
+  if (bytesRead != sizeof(*tmp)) {
+    LOG_ERR("STATE", "Short read (%d/%zu bytes), using defaults", bytesRead, sizeof(*tmp));
+    delete tmp;
     clear();
     return false;
   }
 
-  uint32_t expected = calculateCrc(tmp);
-  if (tmp.crc32 != expected) {
+  uint32_t expected = calculateCrc(*tmp);
+  if (tmp->crc32 != expected) {
     LOG_ERR("STATE", "CRC mismatch, using defaults");
+    delete tmp;
     clear();
     return false;
   }
 
-  memcpy(&data, &tmp, sizeof(data));
+  memcpy(&data, tmp, sizeof(data));
+  delete tmp;
   LOG_INF("STATE", "State loaded OK (lastDir=%s)", data.lastDir);
   return true;
 }
