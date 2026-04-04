@@ -30,7 +30,7 @@ def main():
 
     # Import and run the shared gen_i18n.py
     reader_scripts = os.path.normpath(os.path.join(
-        project_root, "..", "..", "..", "lib", "crosspoint-reader", "scripts"
+        project_root, "..", "..", "lib", "crosspoint-reader", "scripts"
     ))
 
     if os.path.isdir(reader_scripts):

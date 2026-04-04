@@ -1,7 +1,7 @@
 # Y-X4-Album 测试计划
 
-> 版本: 0.1.0 | 最后更新: 2026-04-04
-> 状态: 初始框架（随开发进度持续更新）
+> 版本: 0.2.0 | 最后更新: 2026-04-04
+> 状态: 脚手架测试完成，持续更新中
 
 ---
 
@@ -28,7 +28,8 @@ Xteink X4 E-Ink 电子相册固件，运行于 ESP32-C3（单核 RISC-V @ 160MHz
 ### TC-BUILD-001: 默认环境编译
 - **步骤**: `pio run -t clean && pio run`
 - **预期**: 0 错误, 0 警告
-- **状态**: 🔲 待测
+- **结果**: RAM 26.1% (85,636/327,680B), Flash 19.1% (1,254,225/6,553,600B)
+- **状态**: ✅ 通过 (2026-04-04, 脚手架阶段)
 
 ### TC-BUILD-002: Release 环境编译
 - **步骤**: `pio run -e release -t clean && pio run -e release`
@@ -38,7 +39,8 @@ Xteink X4 E-Ink 电子相册固件，运行于 ESP32-C3（单核 RISC-V @ 160MHz
 ### TC-STATIC-001: CppCheck 静态分析
 - **步骤**: `pio check`
 - **预期**: 无 error 或 warning 级别问题
-- **状态**: 🔲 待测
+- **结果**: 0 HIGH, 0 MEDIUM, 8 LOW（均为 unusedPrivateFunction，属于未实现的 stub 方法，可接受）
+- **状态**: ✅ 通过 (2026-04-04, 脚手架阶段)
 
 ---
 
@@ -468,7 +470,13 @@ Xteink X4 E-Ink 电子相册固件，运行于 ESP32-C3（单核 RISC-V @ 160MHz
 
 | 编号 | 模块 | 描述 | 严重度 | 状态 |
 |------|------|------|--------|------|
-| - | - | 暂无 | - | - |
+| BUG-001 | ActivityManager | `RenderLock::peek()` 使用 `xQueuePeek()` 检测 mutex 状态，应使用 `xSemaphoreGetMutexHolder()` (ActivityManager.cpp:229) | 严重 | 待修复 |
+| BUG-002 | ActivityManager | FreeRTOS render task 在 `begin()` 中创建但无对应 `vTaskDelete()`，`~ActivityManager()` 直接 `assert(false)` 阻止析构 (ActivityManager.h:49, ActivityManager.cpp:10-17) | 严重 | 待确认（可能是设计意图：全局单例永不销毁） |
+| WARN-001 | Activity | 基类使用 `std::string name` 成员变量 (Activity.h:19)，在 380KB RAM 设备上建议改用 `const char*` | 中等 | 待修复 |
+| WARN-002 | ThumbnailCache | `getCachePath()` 中栈分配 `char keyBuf[512]` 超过 256B 限制 (ThumbnailCache.cpp:22) | 中等 | 待修复 |
+| WARN-003 | Settings/State | `loadFromFile()`/`saveToFile()` 为 stub，实现时必须通过 HalStorage（带 mutex）访问 SD 卡 | 中等 | 待实现 |
+| WARN-004 | Viewer/Slideshow | ImageIndex 引用在多个 Activity 间共享 (ViewerActivity.h:19, SlideshowActivity.h:20)，需确认无并发访问风险 | 低 | 待确认 |
+| INFO-001 | ImageDecoder | 解码方法为 stub，实现时必须使用分块/逐行解码，禁止整张图片加载到内存 | 信息 | 待实现 |
 
 ---
 
