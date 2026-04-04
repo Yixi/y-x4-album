@@ -36,8 +36,8 @@ void GalleryActivity::onEnter() {
     preGenerateThumbnails();
   }
 
-  needsFullRedraw_ = true;
-  lastRenderedPage_ = -1;
+  firstRender_ = true;
+  needsRedraw_ = true;
   requestUpdate();
 }
 
@@ -78,27 +78,30 @@ void GalleryActivity::preGenerateThumbnails() {
       continue;
     }
 
-    // Generate this thumbnail
-    ThumbnailCache::generate(fullPath, entry.fileSize, entry.modTime);
-    generated++;
+    bool ok = ThumbnailCache::generate(fullPath, entry.fileSize, entry.modTime);
+    if (ok) {
+      generated++;
+    } else {
+      LOG_ERR("GALLERY", "Thumb failed: %s (fmt=%d, size=%u)",
+              entry.filename, static_cast<int>(entry.format), entry.fileSize);
+    }
 
-    // Update progress every 3 thumbnails or at end
-    if (generated % 3 == 0 || i == total - 1) {
-      int progress = ((alreadyCached + generated) * 100) / total;
+    // Update progress every 3 thumbnails
+    if ((generated + alreadyCached) % 3 == 0 || i == total - 1) {
+      int done = alreadyCached + generated;
+      int progress = (done * 100) / total;
       renderer.clearScreen(0xFF);
-      snprintf(msg, sizeof(msg), "%s (%d/%d)", tr(STR_LOADING), alreadyCached + generated, total);
+      snprintf(msg, sizeof(msg), "%s (%d/%d)", tr(STR_LOADING), done, total);
       renderer.drawCenteredText(UI_12_FONT_ID, renderer.getScreenHeight() / 2 - 20, msg);
       THEME.drawProgressBar(renderer, (renderer.getScreenWidth() - 400) / 2,
                             renderer.getScreenHeight() / 2 + 10, 400, 16, progress);
       renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     }
 
-    // Yield to prevent watchdog timeout
     vTaskDelay(1);
   }
 
-  LOG_INF("GALLERY", "Thumbnails: %d generated, %d cached, %d total",
-          generated, alreadyCached, total);
+  LOG_INF("GALLERY", "Thumbnails: %d new, %d cached, %d total", generated, alreadyCached, total);
 }
 
 void GalleryActivity::loop() {
@@ -125,29 +128,9 @@ void GalleryActivity::loop() {
 }
 
 void GalleryActivity::render(RenderLock&&) {
-  if (!needsFullRedraw_ && !needsFocusUpdate_) return;
+  if (!needsRedraw_) return;
+  needsRedraw_ = false;
 
-  int currentPage = pageOffset_ / getPageSize();
-  bool pageChanged = (currentPage != lastRenderedPage_);
-
-  if (needsFullRedraw_ || pageChanged) {
-    // Full grid redraw (page changed or first render)
-    renderFullGrid();
-    lastRenderedPage_ = currentPage;
-    needsFullRedraw_ = false;
-    needsFocusUpdate_ = false;
-    renderer.displayBuffer(pageChanged && lastRenderedPage_ >= 0
-                               ? HalDisplay::FAST_REFRESH
-                               : HalDisplay::FULL_REFRESH);
-  } else if (needsFocusUpdate_) {
-    // Only focus changed within same page — just redraw borders
-    renderFocusOnly();
-    needsFocusUpdate_ = false;
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-  }
-}
-
-void GalleryActivity::renderFullGrid() {
   renderer.clearScreen(0xFF);
 
   if (imageIndex_.count() == 0) {
@@ -158,18 +141,23 @@ void GalleryActivity::renderFullGrid() {
     cfg.showButtonHints = true;
     cfg.buttonLabels[0] = tr(STR_BROWSE);
     THEME.drawEmptyState(renderer, cfg);
+    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
     return;
   }
 
-  // Status bar
+  // Status bar — show app name instead of raw "/" path
   StatusBarData status = {};
-  status.folderName = initialDir_;
+  const char* displayName = initialDir_;
+  if (strcmp(initialDir_, "/") == 0) {
+    displayName = tr(STR_APP_NAME);
+  }
+  status.folderName = displayName;
   status.currentIndex = focusIndex_ + 1;
   status.totalCount = imageIndex_.count();
   status.batteryPercent = powerManager.getBatteryPercentage();
   THEME.drawStatusBar(renderer, status);
 
-  // Grid view — thumbnails are already pre-generated, just read from cache
+  // Grid view
   GridViewConfig gridCfg = {};
   gridCfg.selectedIndex = focusIndex_;
   gridCfg.pageOffset = pageOffset_;
@@ -183,60 +171,10 @@ void GalleryActivity::renderFullGrid() {
 
   // Button hints
   THEME.drawButtonHints(renderer, tr(STR_BROWSE), tr(STR_OPEN), nullptr, nullptr);
-}
 
-void GalleryActivity::renderFocusOnly() {
-  // Lightweight update: redraw status bar (for index) and grid borders only
-  // Status bar update
-  StatusBarData status = {};
-  status.folderName = initialDir_;
-  status.currentIndex = focusIndex_ + 1;
-  status.totalCount = imageIndex_.count();
-  status.batteryPercent = powerManager.getBatteryPercentage();
-
-  // Clear just the status bar area and redraw
-  renderer.fillRect(0, 0, renderer.getScreenWidth(), THEME.getMetrics().statusBarHeight, false);
-  THEME.drawStatusBar(renderer, status);
-
-  // Redraw grid borders only (erase old selection, draw new selection)
-  int cols = getCols();
-  int rows = getRows();
-  int tw = THEME.getMetrics().thumbWidth;
-  int th = THEME.getMetrics().thumbHeight;
-  int spacingH = THEME.getMetrics().gridSpacingH;
-  int spacingV = THEME.getMetrics().gridSpacingV;
-  int marginLeft = THEME.getMetrics().gridMarginLeft;
-  int marginTop = THEME.getMetrics().gridMarginTop_landscape;
-
-  int pageSize = cols * rows;
-  int thinBorder = THEME.getMetrics().thumbBorderNormal;
-  int thickBorder = THEME.getMetrics().thumbBorderSelected;
-
-  for (int i = 0; i < pageSize; i++) {
-    int globalIdx = pageOffset_ + i;
-    if (globalIdx >= imageIndex_.count()) break;
-
-    int col = i % cols;
-    int row = i / cols;
-    int cellX = marginLeft + col * (tw + spacingH);
-    int cellY = marginTop + row * (th + spacingV);
-    bool selected = (globalIdx == focusIndex_);
-    bool wasSelected = (globalIdx == prevFocusIndex_);
-
-    if (!selected && !wasSelected) continue;  // Skip unchanged cells
-
-    // Clear the border area (white)
-    int clearW = thickBorder;
-    for (int b = 0; b < clearW; b++) {
-      renderer.drawRect(cellX + b, cellY + b, tw - 2 * b, th - 2 * b, false);
-    }
-
-    // Redraw with correct border width
-    int borderW = selected ? thickBorder : thinBorder;
-    for (int b = 0; b < borderW; b++) {
-      renderer.drawRect(cellX + b, cellY + b, tw - 2 * b, th - 2 * b, true);
-    }
-  }
+  // First render uses FULL_REFRESH to clear ghosting, subsequent uses FAST_REFRESH
+  renderer.displayBuffer(firstRender_ ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  firstRender_ = false;
 }
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -263,22 +201,17 @@ void GalleryActivity::moveFocus(int delta) {
   }
 
   if (newIndex == focusIndex_) return;
-
-  prevFocusIndex_ = focusIndex_;
   focusIndex_ = newIndex;
 
-  // Check if page changed
+  // Auto-adjust page
   int pageSize = getPageSize();
-  int oldPage = prevFocusIndex_ / pageSize;
-  int newPage = newIndex / pageSize;
-
-  if (newPage != oldPage) {
-    pageOffset_ = newPage * pageSize;
-    needsFullRedraw_ = true;
-  } else {
-    needsFocusUpdate_ = true;
+  if (focusIndex_ < pageOffset_) {
+    pageOffset_ = (focusIndex_ / pageSize) * pageSize;
+  } else if (focusIndex_ >= pageOffset_ + pageSize) {
+    pageOffset_ = (focusIndex_ / pageSize) * pageSize;
   }
 
+  needsRedraw_ = true;
   requestUpdate();
 }
 
@@ -296,11 +229,10 @@ void GalleryActivity::goToPage(int newOffset) {
   if (newOffset > maxOffset) newOffset = maxOffset;
   if (newOffset == pageOffset_) return;
 
-  prevFocusIndex_ = focusIndex_;
   pageOffset_ = newOffset;
   focusIndex_ = pageOffset_;
 
-  needsFullRedraw_ = true;
+  needsRedraw_ = true;
   requestUpdate();
 }
 
@@ -310,7 +242,8 @@ void GalleryActivity::openSelectedImage() {
   auto viewer = std::make_unique<ViewerActivity>(
       renderer, mappedInput, imageIndex_, focusIndex_);
   startActivityForResult(std::move(viewer), [this](bool) {
-    needsFullRedraw_ = true;
+    needsRedraw_ = true;
+    firstRender_ = true;  // Full refresh when returning from viewer
     requestUpdate();
   });
 }
@@ -323,7 +256,7 @@ void GalleryActivity::openSettings() {
   LOG_DBG("GALLERY", "Settings requested");
 }
 
-// ── Thumbnail loading (no generation — already pre-generated) ──────────────
+// ── Thumbnail loading ───────────────────────────────────────────────────────
 
 GridThumbInfo GalleryActivity::loadThumb(int globalIndex) {
   GridThumbInfo info = {};
@@ -344,7 +277,6 @@ GridThumbInfo GalleryActivity::loadThumb(int globalIndex) {
   if (ThumbnailCache::exists(fullPath, entry.fileSize, entry.modTime)) {
     info.state = ThumbState::Loaded;
   } else {
-    // Should not happen after preGenerate, but handle gracefully
     info.state = ThumbState::Failed;
   }
 

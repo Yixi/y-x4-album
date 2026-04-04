@@ -27,11 +27,9 @@ class GalleryActivity final : public Activity {
   ImageIndex imageIndex_;
   char initialDir_[256] = "/";
   int focusIndex_ = 0;
-  int prevFocusIndex_ = -1;
   int pageOffset_ = 0;
-  int lastRenderedPage_ = -1;
-  bool needsFullRedraw_ = true;
-  bool needsFocusUpdate_ = false;
+  bool needsRedraw_ = true;
+  bool firstRender_ = true;
   ButtonNavigator nav_{200, 400};
 
   int getPageSize() const;
@@ -39,8 +37,6 @@ class GalleryActivity final : public Activity {
   int getRows() const;
 
   void preGenerateThumbnails();
-  void renderFullGrid();
-  void renderFocusOnly();
 
   void moveFocus(int delta);
   void moveRow(int delta);
