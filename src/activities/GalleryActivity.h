@@ -2,6 +2,9 @@
 
 #include "Activity.h"
 #include "album/ImageIndex.h"
+#include "album/ThumbnailCache.h"
+#include "components/AlbumTheme.h"
+#include "util/ButtonNavigator.h"
 
 class GalleryActivity final : public Activity {
  public:
@@ -11,7 +14,7 @@ class GalleryActivity final : public Activity {
   GalleryActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const char* dirPath)
       : Activity("Gallery", renderer, mappedInput) {
     if (dirPath) {
-      snprintf(initialDir, sizeof(initialDir), "%s", dirPath);
+      snprintf(initialDir_, sizeof(initialDir_), "%s", dirPath);
     }
   }
 
@@ -21,13 +24,23 @@ class GalleryActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  ImageIndex imageIndex;
-  char initialDir[256] = "/";
-  int focusIndex = 0;
-  int currentPage = 0;
-  bool needsRedraw = true;
+  ImageIndex imageIndex_;
+  char initialDir_[256] = "/";
+  int focusIndex_ = 0;
+  int pageOffset_ = 0;
+  bool needsRedraw_ = true;
+  ButtonNavigator nav_{200, 400};
 
   int getPageSize() const;
-  int getColumns() const;
+  int getCols() const;
   int getRows() const;
+
+  void moveFocus(int delta);
+  void moveRow(int delta);
+  void goToPage(int pageOffset);
+  void openSelectedImage();
+  void openFileBrowser();
+  void openSettings();
+
+  GridThumbInfo loadThumb(int globalIndex);
 };

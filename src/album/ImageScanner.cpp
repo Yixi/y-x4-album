@@ -14,10 +14,6 @@ int ImageScanner::scanDirectory(const char* dirPath, ImageEntry* entries, int ma
     return 0;
   }
 
-  // Determine if dirPath ends with '/'
-  size_t dirLen = strlen(dirPath);
-  bool hasSlash = (dirLen > 0 && dirPath[dirLen - 1] == '/');
-
   int count = 0;
   char name[128];
 
@@ -42,9 +38,9 @@ int ImageScanner::scanDirectory(const char* dirPath, ImageEntry* entries, int ma
       continue;
     }
 
-    // Build full path: dirPath + "/" + name
-    snprintf(entries[count].filename, sizeof(entries[count].filename),
-             hasSlash ? "%s%s" : "%s/%s", dirPath, name);
+    // Store filename only (ImageIndex prepends dirPath when full path is needed)
+    strncpy(entries[count].filename, name, sizeof(entries[count].filename) - 1);
+    entries[count].filename[sizeof(entries[count].filename) - 1] = '\0';
     entries[count].fileSize = static_cast<uint32_t>(file.fileSize());
     entries[count].modTime = 0;  // HalFile doesn't expose modification time
     entries[count].format = fmt;

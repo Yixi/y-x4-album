@@ -36,8 +36,32 @@ void ImageIndex::clear() {
 }
 
 void ImageIndex::sort(SortMode mode) {
-  // TODO: implement sorting
-  LOG_DBG("INDEX", "Sort mode: %d", static_cast<int>(mode));
+  if (count_ <= 1) return;
+
+  auto cmp = [mode](const ImageEntry& a, const ImageEntry& b) -> bool {
+    switch (mode) {
+      case SortMode::NameAsc:  return strcasecmp(a.filename, b.filename) < 0;
+      case SortMode::NameDesc: return strcasecmp(a.filename, b.filename) > 0;
+      case SortMode::TimeNewest:  return a.modTime > b.modTime;
+      case SortMode::TimeOldest:  return a.modTime < b.modTime;
+      case SortMode::SizeLargest: return a.fileSize > b.fileSize;
+      default: return false;
+    }
+  };
+
+  // Insertion sort: no heap, O(n²) fine for ≤500 images
+  for (int i = 1; i < count_; i++) {
+    ImageEntry tmp;
+    memcpy(&tmp, &entries_[i], sizeof(ImageEntry));
+    int j = i - 1;
+    while (j >= 0 && cmp(tmp, entries_[j])) {
+      memcpy(&entries_[j + 1], &entries_[j], sizeof(ImageEntry));
+      j--;
+    }
+    memcpy(&entries_[j + 1], &tmp, sizeof(ImageEntry));
+  }
+
+  LOG_DBG("INDEX", "Sorted %d entries by mode %d", count_, static_cast<int>(mode));
 }
 
 const ImageEntry& ImageIndex::at(int index) const {
@@ -60,7 +84,9 @@ void ImageIndex::getFullPath(int index, char* outPath, int maxLen) const {
     outPath[0] = '\0';
     return;
   }
-  snprintf(outPath, maxLen, "%s/%s", dirPath_, entries_[index].filename);
+  size_t dirLen = strlen(dirPath_);
+  const char* fmt = (dirLen > 0 && dirPath_[dirLen - 1] == '/') ? "%s%s" : "%s/%s";
+  snprintf(outPath, maxLen, fmt, dirPath_, entries_[index].filename);
 }
 
 int ImageIndex::findByFilename(const char* filename) const {
