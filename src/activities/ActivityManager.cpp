@@ -6,6 +6,7 @@
 #include "BootActivity.h"
 #include "GalleryActivity.h"
 #include "RenderLock.h"
+#include "components/AlbumTheme.h"
 
 void ActivityManager::begin() {
   xTaskCreate(&renderTaskTrampoline, "AlbumRender",
@@ -141,8 +142,10 @@ void ActivityManager::goToGallery(const char* dirPath) {
 }
 
 void ActivityManager::goToSleep() {
-  // TODO: implement SleepActivity
-  LOG_INF("ACT", "Sleep requested");
+  LOG_INF("ACT", "Sleep requested — showing shutdown screen");
+  RenderLock lock;
+  THEME.drawShutdownScreen(renderer);
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 }
 
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {

@@ -2,6 +2,7 @@
 
 #include <Logging.h>
 
+#include "components/AlbumTheme.h"
 #include "fontIds.h"
 
 void BootActivity::onEnter() {
@@ -13,7 +14,6 @@ void BootActivity::onExit() { Activity::onExit(); }
 
 void BootActivity::render(RenderLock&& lock) {
   renderer.clearScreen(0xFF);
-  renderer.drawCenteredText(UI_12_FONT_ID, 200, "Y-X4 Album");
-  renderer.drawCenteredText(UI_10_FONT_ID, 240, "Loading...");
-  renderer.displayBuffer(GfxRenderer::FULL_REFRESH);
+  THEME.drawBootScreen(renderer, "Initializing...", -1, ALBUM_VERSION);
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 }
