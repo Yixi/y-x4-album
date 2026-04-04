@@ -229,4 +229,4 @@ void RenderLock::unlock() {
   }
 }
 
-bool RenderLock::peek() { return xQueuePeek(activityManager.renderingMutex, NULL, 0) != pdTRUE; }
+bool RenderLock::peek() { return xSemaphoreGetMutexHolder(activityManager.renderingMutex) != nullptr; }

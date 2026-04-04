@@ -101,6 +101,7 @@ struct PngContext {
   int imgW;
   int imgH;
   AtkinsonDitherer* ditherer;
+  PNG* png;  // for getLineAsRGB565 in callback
 };
 
 static void* pngOpenCb(const char* filename, int32_t* pFileSize) {
@@ -140,12 +141,10 @@ static int pngDrawCb(PNGDRAW* pDraw) {
   if (destY < dest.y || destY >= dest.y + dest.height) return 1;
 
   // Get RGB565 line for efficient processing
-  // Allocate on stack if width is reasonable, else skip
   if (pDraw->iWidth > 2048) return 1;
 
-  uint16_t lineBuf[pDraw->iWidth];  // VLA, max 4KB for 2048px
-  PNG png;
-  png.getLineAsRGB565(pDraw, lineBuf, PNG_RGB565_LITTLE_ENDIAN, 0xFFFFFFFF);
+  static uint16_t lineBuf[2048];  // 4KB static buffer (not on stack)
+  ctx->png->getLineAsRGB565(pDraw, lineBuf, PNG_RGB565_LITTLE_ENDIAN, 0xFFFFFFFF);
 
   for (int col = 0; col < pDraw->iWidth; col++) {
     int destX = col * dest.width / ctx->imgW + dest.x;
@@ -191,21 +190,25 @@ bool ImageDecoder::getImageInfo(const char* path, ImageInfo& info) {
   bool ok = false;
 
   if (fmt == ImageFormat::JPEG) {
-    JPEGDEC jpeg;
-    if (jpeg.open(path, jpegOpenCb, jpegCloseCb, jpegReadCb, jpegSeekCb, nullptr)) {
-      info.width = jpeg.getWidth();
-      info.height = jpeg.getHeight();
-      jpeg.close();
+    auto* jpeg = new JPEGDEC();
+    if (!jpeg) { file.close(); return false; }
+    if (jpeg->open(path, jpegOpenCb, jpegCloseCb, jpegReadCb, jpegSeekCb, nullptr)) {
+      info.width = jpeg->getWidth();
+      info.height = jpeg->getHeight();
+      jpeg->close();
       ok = true;
     }
+    delete jpeg;
   } else if (fmt == ImageFormat::PNG) {
-    PNG png;
-    if (png.open(path, pngOpenCb, pngCloseCb, pngReadCb, pngSeekCb, nullptr) == PNG_SUCCESS) {
-      info.width = png.getWidth();
-      info.height = png.getHeight();
-      png.close();
+    auto* png = new PNG();
+    if (!png) { file.close(); return false; }
+    if (png->open(path, pngOpenCb, pngCloseCb, pngReadCb, pngSeekCb, nullptr) == PNG_SUCCESS) {
+      info.width = png->getWidth();
+      info.height = png->getHeight();
+      png->close();
       ok = true;
     }
+    delete png;
   } else if (fmt == ImageFormat::BMP) {
     Bitmap bmp(file);
     if (bmp.parseHeaders() == BmpReaderError::Ok) {
@@ -380,68 +383,81 @@ bool ImageDecoder::generateThumbnail(const char* srcPath, const char* dstPath,
 
 bool ImageDecoder::decodeJpeg(const char* path, GfxRenderer& renderer,
                               const Rect& dest, int imgW, int imgH) {
-  JPEGDEC jpeg;
+  auto* jpeg = new JPEGDEC();
+  if (!jpeg) {
+    LOG_ERR("DECODER", "JPEG alloc failed");
+    return false;
+  }
 
   // Allocate ditherer for the destination width
   AtkinsonDitherer ditherer(dest.width);
 
   JpegContext ctx = {&renderer, dest, imgW, imgH, &ditherer};
 
-  if (!jpeg.open(path, jpegOpenCb, jpegCloseCb, jpegReadCb, jpegSeekCb, jpegDrawCb)) {
+  if (!jpeg->open(path, jpegOpenCb, jpegCloseCb, jpegReadCb, jpegSeekCb, jpegDrawCb)) {
     LOG_ERR("DECODER", "JPEG open failed: %s", path);
+    delete jpeg;
     return false;
   }
 
-  jpeg.setUserPointer(&ctx);
-  jpeg.setPixelType(RGB565_LITTLE_ENDIAN);
+  jpeg->setUserPointer(&ctx);
+  jpeg->setPixelType(RGB565_LITTLE_ENDIAN);
 
   // Calculate optimal downsampling
-  int scale = calcJpegScale(jpeg.getWidth(), jpeg.getHeight(),
+  int scale = calcJpegScale(jpeg->getWidth(), jpeg->getHeight(),
                             dest.width, dest.height);
   int options = 0;
   if (scale == 1) options = JPEG_SCALE_HALF;
   else if (scale == 2) options = JPEG_SCALE_QUARTER;
   else if (scale >= 3) options = JPEG_SCALE_EIGHTH;
 
-  int rc = jpeg.decode(0, 0, options);
-  jpeg.close();
+  int rc = jpeg->decode(0, 0, options);
+  jpeg->close();
 
-  if (!rc) {
-    LOG_ERR("DECODER", "JPEG decode error: %d", jpeg.getLastError());
-    return false;
+  bool ok = (rc != 0);
+  if (!ok) {
+    LOG_ERR("DECODER", "JPEG decode error: %d", jpeg->getLastError());
   }
-  return true;
+  delete jpeg;
+  return ok;
 }
 
 bool ImageDecoder::decodePng(const char* path, GfxRenderer& renderer,
                              const Rect& dest) {
-  PNG png;
-
-  if (png.open(path, pngOpenCb, pngCloseCb, pngReadCb, pngSeekCb, pngDrawCb) != PNG_SUCCESS) {
-    LOG_ERR("DECODER", "PNG open failed: %s", path);
+  auto* png = new PNG();
+  if (!png) {
+    LOG_ERR("DECODER", "PNG alloc failed");
     return false;
   }
 
-  int imgW = png.getWidth();
-  int imgH = png.getHeight();
+  if (png->open(path, pngOpenCb, pngCloseCb, pngReadCb, pngSeekCb, pngDrawCb) != PNG_SUCCESS) {
+    LOG_ERR("DECODER", "PNG open failed: %s", path);
+    delete png;
+    return false;
+  }
+
+  int imgW = png->getWidth();
+  int imgH = png->getHeight();
 
   if (imgW > 2048) {
     LOG_ERR("DECODER", "PNG too wide (%d px), max 2048", imgW);
-    png.close();
+    png->close();
+    delete png;
     return false;
   }
 
   AtkinsonDitherer ditherer(dest.width);
-  PngContext ctx = {&renderer, dest, imgW, imgH, &ditherer};
+  PngContext ctx = {&renderer, dest, imgW, imgH, &ditherer, png};
 
-  int rc = png.decode(&ctx, 0);
-  png.close();
+  int rc = png->decode(&ctx, 0);
+  png->close();
 
-  if (rc != PNG_SUCCESS) {
-    LOG_ERR("DECODER", "PNG decode error: %d", png.getLastError());
-    return false;
+  bool ok = (rc == PNG_SUCCESS);
+  if (!ok) {
+    LOG_ERR("DECODER", "PNG decode error: %d", png->getLastError());
   }
-  return true;
+  delete png;
+  return ok;
 }
 
 bool ImageDecoder::decodeBmp(const char* path, GfxRenderer& renderer,

@@ -13,7 +13,7 @@ class ImageIndex {
   ImageIndex() = default;
   ~ImageIndex();
 
-  bool build(const char* dirPath, int maxEntries = 500);
+  bool build(const char* dirPath, int maxEntries = 200);
   void clear();
 
   void sort(SortMode mode);
