@@ -1,0 +1,6 @@
+.pio/
+build/
+*.generated.h
+compile_commands.json
+platformio.local.ini
+.vscode/
