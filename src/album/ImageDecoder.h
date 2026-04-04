@@ -22,12 +22,13 @@ class ImageDecoder {
   // Get image dimensions without full decode
   static bool getImageInfo(const char* path, ImageInfo& info);
 
-  // Full-screen grayscale rendering (4-level, requires two decode passes)
+  // Render image to screen using BMP conversion + drawBitmap (crosspoint approach).
+  // Grayscale mode: converts to grayscale BMP, then 3-pass LSB/MSB rendering.
+  // BW mode: converts to 1-bit BMP, single pass.
   static bool decodeGrayscale(const char* path, GfxRenderer& renderer,
                               int screenW, int screenH,
                               ScaleMode mode, bool bgWhite);
 
-  // Full-screen BW rendering (1-bit, single decode pass)
   static bool decodeBW(const char* path, GfxRenderer& renderer,
                        int screenW, int screenH,
                        ScaleMode mode, bool bgWhite);
@@ -36,36 +37,21 @@ class ImageDecoder {
   static bool generateThumbnail(const char* srcPath, const char* dstPath,
                                 int thumbW, int thumbH);
 
-  // RGB565 → 8-bit grayscale
-  static inline uint8_t rgb565ToGray(uint16_t rgb565) {
-    uint8_t r = (rgb565 >> 11) & 0x1F;
-    uint8_t g = (rgb565 >> 5) & 0x3F;
-    uint8_t b = rgb565 & 0x1F;
-    // Expand to 8-bit and compute luminance
-    r = (r << 3) | (r >> 2);
-    g = (g << 2) | (g >> 4);
-    b = (b << 3) | (b >> 2);
-    return static_cast<uint8_t>((r * 77 + g * 150 + b * 29) >> 8);
-  }
-
-  // RGB888 → 8-bit grayscale
-  static inline uint8_t rgbToGray(uint8_t r, uint8_t g, uint8_t b) {
-    return static_cast<uint8_t>((r * 77 + g * 150 + b * 29) >> 8);
-  }
+  // Get cache path for converted BMP
+  static void getCacheBmpPath(const char* srcPath, char* outPath, int maxLen);
 
  private:
-  // Per-format decode (renders directly to framebuffer via callback)
-  static bool decodeJpeg(const char* path, GfxRenderer& renderer,
-                         const Rect& dest, int imgW, int imgH);
-  static bool decodePng(const char* path, GfxRenderer& renderer,
-                        const Rect& dest);
-  static bool decodeBmp(const char* path, GfxRenderer& renderer,
-                        const Rect& dest);
+  // Convert source image to BMP on SD card (grayscale or 1-bit)
+  static bool convertToBmp(const char* srcPath, const char* dstPath,
+                           int targetW, int targetH, bool oneBit);
 
-  // JPEG downsampling factor: 0=full, 1=1/2, 2=1/4, 3=1/8
-  static int calcJpegScale(int imgW, int imgH, int targetW, int targetH);
+  // Render a BMP file to screen using Bitmap + drawBitmap (matching crosspoint-reader)
+  static bool renderBmpGrayscale(const char* bmpPath, GfxRenderer& renderer,
+                                 int screenW, int screenH, ScaleMode mode);
+  static bool renderBmpBW(const char* bmpPath, GfxRenderer& renderer,
+                          int screenW, int screenH, ScaleMode mode);
 
-  // Calculate destination rectangle for given scale mode
-  static Rect calcDestRect(int imgW, int imgH, int screenW, int screenH,
-                           ScaleMode mode);
+  // Calculate destination position for centered image
+  static void calcCenterPos(int imgW, int imgH, int screenW, int screenH,
+                            int& outX, int& outY);
 };
