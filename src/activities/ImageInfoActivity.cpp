@@ -23,5 +23,5 @@ void ImageInfoActivity::render(RenderLock&& lock) {
 
   renderer.clearScreen(0xFF);
   renderer.drawCenteredText(UI_12_FONT_ID, 220, "Image Info");
-  renderer.displayBuffer(GfxRenderer::FULL_REFRESH);
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 }

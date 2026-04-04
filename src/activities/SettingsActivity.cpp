@@ -216,7 +216,7 @@ void SettingsActivity::render(RenderLock&&) {
   if (confirmActive_) {
     const char* msg = (confirmItem_ == ItemId::ClearCache)
                           ? "确定要清除所有缩略图缓存？"
-                          : "确定要��复所有默认设置？";
+                          : "确定要恢复所有默认设置？";
     DialogConfig dlgCfg{};
     dlgCfg.title = (confirmItem_ == ItemId::ClearCache) ? "清除缓存" : "恢复默认";
     dlgCfg.message = msg;
@@ -237,7 +237,7 @@ void SettingsActivity::render(RenderLock&&) {
 static const char* ITEM_TITLES[] = {
     "幻灯片间隔", "播放顺序", "图片缩放", "屏幕方向",
     "渲染模式",   "自动关机", "循环浏览", "侧键方向",
-    "清除缩略图缓存", "��复默认设置", "关于",
+    "清除缩略图缓存", "恢复默认设置", "关于",
 };
 
 void SettingsActivity::buildListItems(ListItem* items, char valueBuffers[][24]) const {
@@ -270,7 +270,7 @@ static const char* INTERVAL_LABELS[] = {"5 秒", "10 秒", "30 秒", "1 分钟",
 static const char* ORDER_LABELS[] = {"顺序", "随机"};
 static const char* SCALE_LABELS[] = {"适应", "填充"};
 static const char* ORIENT_LABELS[] = {"横屏", "竖屏", "横屏倒置", "竖屏倒置"};
-static const char* RENDER_LABELS[] = {"灰度", "���白"};
+static const char* RENDER_LABELS[] = {"灰度", "黑白"};
 static const char* SLEEP_LABELS[] = {"关闭", "5 分钟", "10 分钟", "30 分钟", "1 小时"};
 static const uint16_t SLEEP_VALUES[] = {0, 5, 10, 30, 60};
 static const char* TOGGLE_LABELS[] = {"关闭", "开启"};

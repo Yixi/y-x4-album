@@ -470,13 +470,19 @@ Xteink X4 E-Ink 电子相册固件，运行于 ESP32-C3（单核 RISC-V @ 160MHz
 
 | 编号 | 模块 | 描述 | 严重度 | 状态 |
 |------|------|------|--------|------|
-| BUG-001 | ActivityManager | `RenderLock::peek()` 使用 `xQueuePeek()` 检测 mutex 状态，应使用 `xSemaphoreGetMutexHolder()` (ActivityManager.cpp:229) | 严重 | 待修复 |
+| BUG-001 | ActivityManager | `RenderLock::peek()` 使用 `xQueuePeek()` 检测 mutex 状态，应使用 `xSemaphoreGetMutexHolder()` (ActivityManager.cpp:229) | 严重 | **未修复** |
 | BUG-002 | ActivityManager | FreeRTOS render task 在 `begin()` 中创建但无对应 `vTaskDelete()`，`~ActivityManager()` 直接 `assert(false)` 阻止析构 (ActivityManager.h:49, ActivityManager.cpp:10-17) | 严重 | 待确认（可能是设计意图：全局单例永不销毁） |
+| BUG-003 | ImageDecoder | **栈溢出**：`pngDrawCb` 中 `PNG png;` 在栈上分配 ~58KB（PNGdec.h PNGIMAGE 结构体含 32KB zlib + 16KB pixel + 2KB file buf），渲染任务栈仅 8KB。且读取未初始化的 `_png.iHasAlpha`（未定义行为）。应通过 PngContext 传递已有 PNG 指针 (ImageDecoder.cpp:147) | **致命** | 待修复 |
+| BUG-004 | ImageDecoder | **栈溢出**：`decodePng` 中 `PNG png;` (~58KB) 和 `decodeJpeg` 中 `JPEGDEC jpeg;` (~17.9KB) 均在栈上分配，超出任何任务栈大小。必须改为堆分配 `new`/`delete` (ImageDecoder.cpp:383, 418) | **致命** | 待修复 |
+| BUG-005 | ImageDecoder | **栈溢出**：`getImageInfo` 中 `JPEGDEC jpeg;` (~17.9KB) 和 `PNG png;` (~58KB) 在栈上分配 (ImageDecoder.cpp:194, 202) | **致命** | 待修复 |
+| BUG-006 | ImageDecoder | **VLA 栈溢出**：`pngDrawCb` 中 `uint16_t lineBuf[pDraw->iWidth]` 为 VLA，宽度 2048 时占 4KB 栈空间，加上其他局部变量超出回调栈预算 (ImageDecoder.cpp:146) | 严重 | 待修复 |
 | WARN-001 | Activity | 基类使用 `std::string name` 成员变量 (Activity.h:19)，在 380KB RAM 设备上建议改用 `const char*` | 中等 | 待修复 |
-| WARN-002 | ThumbnailCache | `getCachePath()` 中栈分配 `char keyBuf[512]` 超过 256B 限制 (ThumbnailCache.cpp:22) | 中等 | 待修复 |
+| WARN-002 | ThumbnailCache | `getCachePath()` 中栈分配 `char keyBuf[512]` 超过 256B 限制 (ThumbnailCache.cpp:22) | 中等 | **未修复** |
 | WARN-003 | Settings/State | `loadFromFile()`/`saveToFile()` 为 stub，实现时必须通过 HalStorage（带 mutex）访问 SD 卡 | 中等 | 待实现 |
 | WARN-004 | Viewer/Slideshow | ImageIndex 引用在多个 Activity 间共享 (ViewerActivity.h:19, SlideshowActivity.h:20)，需确认无并发访问风险 | 低 | 待确认 |
-| INFO-001 | ImageDecoder | 解码方法为 stub，实现时必须使用分块/逐行解码，禁止整张图片加载到内存 | 信息 | 待实现 |
+| WARN-005 | ImageDecoder | `AtkinsonDitherer` 构造函数内部 `new int16_t[width+4]` 无 nullptr 检查，低内存时可能崩溃 | 中等 | 待确认（三方库） |
+| BUG-007 | ImageIndex | **路径重复**：`scanDirectory` 将完整路径存入 `filename`（如 `/pics/photo.jpg`），但 `getFullPath()` 又拼接 `dirPath_`，产生 `/pics//pics/photo.jpg`。ViewerActivity/SlideshowActivity 用此路径解码图片，导致文件打开失败 (ImageScanner.cpp:46, ImageIndex.cpp:63) | **严重** | 待修复 |
+| WARN-006 | ImageIndex | 默认 maxEntries=500，`sizeof(ImageEntry)`≈140B，索引数组 ~70KB 堆占用。配合 PNG 解码器 ~58KB + framebuffer 48KB，峰值内存可能紧张 | 中等 | 需内存预算验证 |
 
 ---
 
