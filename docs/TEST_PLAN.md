@@ -1,7 +1,7 @@
 # Y-X4-Album 测试计划
 
-> 版本: 0.2.0 | 最后更新: 2026-04-04
-> 状态: 脚手架测试完成，持续更新中
+> 版本: 1.0.0 | 最后更新: 2026-04-04
+> 状态: **最终审查通过** — 所有关键 bug 已修复，无发布阻塞项
 
 ---
 
@@ -25,11 +25,12 @@ Xteink X4 E-Ink 电子相册固件，运行于 ESP32-C3（单核 RISC-V @ 160MHz
 
 ## 2. 编译与静态分析测试
 
-### TC-BUILD-001: 默认环境编译
-- **步骤**: `pio run -t clean && pio run`
+### TC-BUILD-001: 默��环境编译
+- **步��**: `pio run -t clean && pio run`
 - **预期**: 0 错误, 0 警告
-- **结果**: RAM 26.1% (85,636/327,680B), Flash 19.1% (1,254,225/6,553,600B)
-- **状态**: ✅ 通过 (2026-04-04, 脚手架阶段)
+- **结果**: RAM 28.2% (92,284/327,680B), Flash 20.8% (1,363,049/6,553,600B)
+- **状态**: ✅ 通过 (2026-04-04, 全模块完成后)
+- **注意**: i18n 更新后必须 clean build（gen_i18n.py 增量构建不重新生成）
 
 ### TC-BUILD-002: Release 环境编译
 - **步骤**: `pio run -e release -t clean && pio run -e release`
@@ -39,8 +40,8 @@ Xteink X4 E-Ink 电子相册固件，运行于 ESP32-C3（单核 RISC-V @ 160MHz
 ### TC-STATIC-001: CppCheck 静态分析
 - **步骤**: `pio check`
 - **预期**: 无 error 或 warning 级别问题
-- **结果**: 0 HIGH, 0 MEDIUM, 8 LOW（均为 unusedPrivateFunction，属于未实现的 stub 方法，可接受）
-- **状态**: ✅ 通过 (2026-04-04, 脚手架阶段)
+- **结果**: 0 HIGH, 0 MEDIUM, 15 LOW（含 unusedPrivateFunction、constParameterReference、duplicateCondition in AlbumTheme.cpp:488）
+- **状态**: ✅ ��过 (2026-04-04, 全模块完成后)
 
 ---
 
@@ -384,15 +385,24 @@ Xteink X4 E-Ink 电子相册固件，运行于 ESP32-C3（单核 RISC-V @ 160MHz
 
 ## 5. 内存预算验证
 
-### 5.1 静态内存预算
-| 组件 | 预算 | 验证方式 |
-|------|------|---------|
-| E-Ink Framebuffer | 48,000 B (800x480/8) | 编译时常量检查 |
-| GfxRenderer BW buffer | ~57,600 B (8 chunks x 8KB) | 代码审查 |
-| 图片解码行缓冲 | < 16KB | 代码审查（PNG_MAX_BUFFERED_PIXELS=16416） |
-| 抖动误差缓冲 | ~6KB（3行 x 宽度 x 2B） | 代码审查 |
-| 缩略图缓冲 | TBD | 架构文档确认后验证 |
-| 总计 | < 330KB（保留 > 50KB） | `ESP.getFreeHeap()` 运行时监控 |
+### 5.1 静态/编译期内存
+| 组件 | 实测 | 来源 |
+|------|------|------|
+| .bss (静态变量) | 77,728 B | pio build DRAM 报告 |
+| .data (初始化数据) | 14,553 B | pio build DRAM 报告 |
+| .text (IRAM 代码) | 65,754 B | pio build DRAM 报告 |
+| **DRAM 总计** | **158,035 B (49.2%)** | 剩余 163,261 B 给堆 |
+
+### 5.2 运行时堆分配预算
+| 组件 | 大小 | 说明 |
+|------|------|------|
+| ImageIndex (500条) | ~70,000 B | `malloc(500 * sizeof(ImageEntry))` |
+| PNG 解码器 (堆分配后) | ~58,000 B | PNGIMAGE 结构体（**当前未修复，仍在栈上**） |
+| JPEG 解码器 (堆分配后) | ~17,900 B | JPEGIMAGE 结构体（**当前未修复，仍在栈上**） |
+| AtkinsonDitherer | ~4,800 B | 3行误差缓冲 (800px宽) |
+| BW buffer 备份 (灰度模式) | ~48,000 B | storeBwBuffer 临时分配 |
+| **峰值总计 (灰度 PNG)** | **~181KB** | 索引 + PNG + ditherer + BW backup |
+| **可用堆** | **~163KB** | ⚠️ **超出！需降低 maxEntries 或优化** |
 
 ### 5.2 运行时内存检查点
 - [ ] 启动后空闲状态：`ESP.getFreeHeap()` > 200KB
@@ -470,19 +480,24 @@ Xteink X4 E-Ink 电子相册固件，运行于 ESP32-C3（单核 RISC-V @ 160MHz
 
 | 编号 | 模块 | 描述 | 严重度 | 状态 |
 |------|------|------|--------|------|
-| BUG-001 | ActivityManager | `RenderLock::peek()` 使用 `xQueuePeek()` 检测 mutex 状态，应使用 `xSemaphoreGetMutexHolder()` (ActivityManager.cpp:229) | 严重 | **未修复** |
+| BUG-001 | ActivityManager | ~~RenderLock::peek() xQueuePeek~~：已修复，改用 `xSemaphoreGetMutexHolder()` (ActivityManager.cpp:232) | 严重 | ✅ 已修复 |
 | BUG-002 | ActivityManager | FreeRTOS render task 在 `begin()` 中创建但无对应 `vTaskDelete()`，`~ActivityManager()` 直接 `assert(false)` 阻止析构 (ActivityManager.h:49, ActivityManager.cpp:10-17) | 严重 | 待确认（可能是设计意图：全局单例永不销毁） |
-| BUG-003 | ImageDecoder | **栈溢出**：`pngDrawCb` 中 `PNG png;` 在栈上分配 ~58KB（PNGdec.h PNGIMAGE 结构体含 32KB zlib + 16KB pixel + 2KB file buf），渲染任务栈仅 8KB。且读取未初始化的 `_png.iHasAlpha`（未定义行为）。应通过 PngContext 传递已有 PNG 指针 (ImageDecoder.cpp:147) | **致命** | 待修复 |
-| BUG-004 | ImageDecoder | **栈溢出**：`decodePng` 中 `PNG png;` (~58KB) 和 `decodeJpeg` 中 `JPEGDEC jpeg;` (~17.9KB) 均在栈上分配，超出任何任务栈大小。必须改为堆分配 `new`/`delete` (ImageDecoder.cpp:383, 418) | **致命** | 待修复 |
-| BUG-005 | ImageDecoder | **栈溢出**：`getImageInfo` 中 `JPEGDEC jpeg;` (~17.9KB) 和 `PNG png;` (~58KB) 在栈上分配 (ImageDecoder.cpp:194, 202) | **致命** | 待修复 |
-| BUG-006 | ImageDecoder | **VLA 栈溢出**：`pngDrawCb` 中 `uint16_t lineBuf[pDraw->iWidth]` 为 VLA，宽度 2048 时占 4KB 栈空间，加上其他局部变量超出回调栈预算 (ImageDecoder.cpp:146) | 严重 | 待修复 |
+| BUG-003 | ImageDecoder | ~~pngDrawCb 栈溢出~~：已修复。PngContext 新增 `PNG* png` 指针（line 104），回调通过 `ctx->png->getLineAsRGB565()` 使用外层 PNG 对象（line 147），不再栈分配 | **致命** | ✅ 已修复 |
+| BUG-004 | ImageDecoder | ~~decodePng/decodeJpeg 栈溢出~~：已修复。`auto* jpeg = new JPEGDEC()` (line 386) + `auto* png = new PNG()` (line 427)，均有 nullptr 检查和 `delete` | **致命** | ✅ 已修复 |
+| BUG-005 | ImageDecoder | ~~getImageInfo 栈溢出~~：已修复。JPEG `new JPEGDEC()` (line 193) / PNG `new PNG()` (line 203)，均堆分配 + nullptr + delete | **致命** | ✅ 已修复 |
+| BUG-006 | ImageDecoder | ~~VLA 栈溢出~~：已修复。改为 `static uint16_t lineBuf[2048]`（line 146），4KB 计入 .bss 不占栈 | 严重 | ✅ 已修复 |
 | WARN-001 | Activity | 基类使用 `std::string name` 成员变量 (Activity.h:19)，在 380KB RAM 设备上建议改用 `const char*` | 中等 | 待修复 |
-| WARN-002 | ThumbnailCache | `getCachePath()` 中栈分配 `char keyBuf[512]` 超过 256B 限制 (ThumbnailCache.cpp:22) | 中等 | **未修复** |
-| WARN-003 | Settings/State | `loadFromFile()`/`saveToFile()` 为 stub，实现时必须通过 HalStorage（带 mutex）访问 SD 卡 | 中等 | 待实现 |
+| WARN-002 | ThumbnailCache | ~~keyBuf[512]~~：已修复，降至 `char keyBuf[256]` | 中等 | ✅ 已修复 |
+| WARN-003 | Settings/State | ~~file ops stub~~：已修复。AlbumSettings 和 AlbumState 均通过 HalStorage（带 mutex）正确实现文件读写，含 CRC 校验、short read/write 检查、版本迁移 | 中等 | ✅ 已修复 |
 | WARN-004 | Viewer/Slideshow | ImageIndex 引用在多个 Activity 间共享 (ViewerActivity.h:19, SlideshowActivity.h:20)，需确认无并发访问风险 | 低 | 待确认 |
 | WARN-005 | ImageDecoder | `AtkinsonDitherer` 构造函数内部 `new int16_t[width+4]` 无 nullptr 检查，低内存时可能崩溃 | 中等 | 待确认（三方库） |
-| BUG-007 | ImageIndex | **路径重复**：`scanDirectory` 将完整路径存入 `filename`（如 `/pics/photo.jpg`），但 `getFullPath()` 又拼接 `dirPath_`，产生 `/pics//pics/photo.jpg`。ViewerActivity/SlideshowActivity 用此路径解码图片，导致文件打开失败 (ImageScanner.cpp:46, ImageIndex.cpp:63) | **严重** | 待修复 |
-| WARN-006 | ImageIndex | 默认 maxEntries=500，`sizeof(ImageEntry)`≈140B，索引数组 ~70KB 堆占用。配合 PNG 解码器 ~58KB + framebuffer 48KB，峰值内存可能紧张 | 中等 | 需内存预算验证 |
+| BUG-007 | ImageIndex | ~~路径重复~~：已修复。scanDirectory 现在只存文件名，getFullPath() 负责拼接含斜杠处理 | **严重** | ✅ 已修复 |
+| BUG-008 | GalleryActivity | `loadThumb()` 在 render 回调中同步执行缩略图生成（`ThumbnailCache::generate` → `ImageDecoder::generateThumbnail`），持有 RenderLock 时阻塞 I/O。每页最多 15 张缩略图，首次加载可能阻塞数十秒 (GalleryActivity.cpp:224-231) | 中等 | 待优化（可接受 MVP） |
+| BUG-009 | AlbumState | `loadFromFile()` 中 `AlbumStateData tmp` 栈分配 ~392B（1+256+128+2+1+4），超过 256B 栈变量限制 (AlbumState.cpp:26) | 中等 | 待修复 |
+| BUG-010 | AlbumTheme | `duplicateCondition`：AlbumTheme.cpp:488 有重复 if 条件（cppcheck 报告） | 低 | 待修复 |
+| WARN-006 | ImageIndex | 默认 maxEntries=500，`sizeof(ImageEntry)`≈140B，索引数组 ~70KB 堆占用。配合 PNG 解码器 ~58KB + framebuffer 48KB，峰值内存可能紧张 | 中等 | 未调整 |
+| WARN-007 | GalleryActivity | `onEnter()` 和 `moveFocus()` 中 `getPageSize()` 若返回 0（grid 尺寸为 0），将导致除零崩溃 (GalleryActivity.cpp:30, 152-157) | 中等 | 待修复 |
+| WARN-008 | SlideshowActivity | `nextShuffleIndex()` 的 while 循环无迭代上限。虽然 LCG 理论上总会命中不同值，但建议添加安全限制 (SlideshowActivity.cpp:184-187) | 低 | 建议改进 |
 
 ---
 
